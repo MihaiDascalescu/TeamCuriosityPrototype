@@ -1,129 +1,105 @@
-using System;
+using System.Numerics;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using Vector2 = UnityEngine.Vector2;
+
 
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    [SerializeField] private float positionSpeedMultiplier = 7f;
+    [SerializeField]private float moveSpeed = 3;
 
-    [SerializeField] private float playerHeight = 2f;
-    [SerializeField] private float playerWidth = 0.7f;
-
-   
-    
     [Header("Jumping")]
-    [SerializeField] private Transform groundCheck;
-    [SerializeField] private LayerMask groundLayer;
-    [SerializeField] private float fallMultiplier;
     [SerializeField] private float jumpPower;
-    [SerializeField] private float jumpTime;
-    [SerializeField] private float jumpMultiplier = 3;
-    
-    private Rigidbody2D rigidbody2D;
-    private bool isGrounded;
-    private Vector2 vecGravity;
+    [SerializeField] private int maxJumps = 2;
+    private int jumpsRemaining;
 
-    private bool isJumping = false;
-    private float jumpCounter = 0;
+    [Header("Ground Check")] 
+    [SerializeField] private Transform groundCheck;
+    [SerializeField] private Vector2 groundCheckSize = new Vector2(0.05f, 0.05f);
+    [SerializeField] private LayerMask groundLayer;
+
+    [Header("Gravity")] 
+    [SerializeField] private float baseGravity = 2;
+    [SerializeField] private float maxFallSpeed = 18;
+    [SerializeField] private float fallSpeedMultiplier = 2;
     
-    
-    
-    public static PlayerController Instance { get; private set; }
-    
-    private bool isWalking = false;
+    private float horizontalMovement;
+    private Rigidbody2D rb;
 
     private void Awake()
     {
-        Instance = this;
+        rb = GetComponent<Rigidbody2D>();
     }
 
-    private void Start()
+    public void Jump(InputAction.CallbackContext callbackContext)
     {
-        GameInput.Instance.OnJumpPerformed += HandleJumping;
+        if (GameManager.Instance.GameStates != GameManager.GameState.Playing)
+        {
+            rb.velocity = Vector2.zero;
+            return;
+        }
+        if (jumpsRemaining > 0)
+        {
+            if (callbackContext.performed)
+            {
+                rb.velocity = new Vector2(rb.velocity.x, jumpPower);
+                jumpsRemaining--;
+            }
+            else if (callbackContext.canceled)
+            {
+                rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * 0.5f);
+                jumpsRemaining--;
+            }
+        }
+    }
 
-        vecGravity = new Vector2(0, -Physics2D.gravity.y);
-        rigidbody2D = GetComponent<Rigidbody2D>();
+    private void Gravity()
+    {
+        if (rb.velocity.y < 0)
+        {
+            rb.gravityScale = baseGravity * fallSpeedMultiplier;
+            rb.velocity =
+                new Vector2(rb.velocity.x, Mathf.Max(rb.velocity.y, - maxFallSpeed));
+        }
+        else
+        {
+            rb.gravityScale = baseGravity;
+        }
+    }
+
+    private void GroundCheck()
+    {
+        if (Physics2D.OverlapBox(groundCheck.position, groundCheckSize, 0, groundLayer))
+        {
+            jumpsRemaining = maxJumps;
+        }
     }
     
-    private void OnDestroy()
-    {
-        if (GameInput.Instance == null) return; 
-        GameInput.Instance.OnJumpPerformed -= HandleJumping;
-    }
-
-    private void HandleJumping(object sender, EventArgs e)
-    {
-        /*isJumping = false;
-        jumpCounter = 0;
-
-        if (rigidbody2D.velocity.y > 0)
-        {
-            rigidbody2D.velocity = new Vector2(rigidbody2D.velocity.x, rigidbody2D.velocity.y * 0.6f);
-        }*/
-        if (CheckIsGrounded())
-        {
-            rigidbody2D.velocity = new Vector2(rigidbody2D.velocity.x, jumpPower);
-            isJumping = true;
-            jumpCounter = 0;
-        }
-    }
-
     private void Update()
     {
-        HandleMovement();
-        if (rigidbody2D.velocity.y > 0 && isJumping)
+        if (GameManager.Instance.GameStates != GameManager.GameState.Playing)
         {
-            jumpCounter += Time.deltaTime;
-            if (jumpCounter > jumpTime)
-            {
-                isJumping = false;
-            }
-
-            float t = jumpCounter / jumpTime;
-            float currentJumpM = jumpMultiplier;
-
-            if (t > 0.5f)
-            {
-                currentJumpM = jumpMultiplier * (1 - t);
-            }
-
-            rigidbody2D.velocity += vecGravity * currentJumpM * Time.deltaTime;
+            rb.velocity = Vector2.zero;
+            return;
         }
+        HandleMovement();
+        GroundCheck();
+        Gravity();
     }
 
-    private bool CheckIsGrounded()
+    public void Move(InputAction.CallbackContext callbackContext)
     {
-        return isGrounded = Physics2D.OverlapCapsule(groundCheck.position, new Vector2(1.8f, 0.3f),
-            CapsuleDirection2D.Horizontal, 0, groundLayer);
+        horizontalMovement = callbackContext.ReadValue<Vector2>().x;
     }
     private void HandleMovement()
     {
-        Vector2 inputMovement = GameInput.Instance.GetMovementVector();
-        
-        Vector3 movementDirection = new Vector3(inputMovement.x, 0, 0);
-
-        var moveDistance = positionSpeedMultiplier * Time.deltaTime;
-
-        var canMove =  !Physics.CapsuleCast(transform.position, transform.position + Vector3.up * playerHeight, 
-            playerWidth, movementDirection, moveDistance);
-        
-        isWalking = movementDirection != Vector3.zero;
-
-        if (!canMove)
-        {
-            var moveDirX = new Vector3(movementDirection.x, 0, 0).normalized;
-            canMove = movementDirection.x is < -.5f or > 0.5f && !Physics.CapsuleCast(transform.position, transform.position + Vector3.up * playerHeight, 
-                playerWidth, moveDirX, moveDistance);
-
-            if (canMove)
-            {
-                movementDirection = moveDirX;
-            }
-        }
-        if(canMove)
-        {
-            transform.position += movementDirection * moveDistance;
-        }
+        rb.velocity = new Vector2(horizontalMovement * moveSpeed, rb.velocity.y);
     }
-    
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.white;
+        Gizmos.DrawCube(groundCheck.position, groundCheckSize);
+    }
 }
