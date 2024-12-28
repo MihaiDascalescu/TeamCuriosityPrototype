@@ -6,6 +6,7 @@ public class Checkpoint : MonoBehaviour
     public bool IsVisited
     {
         get => isVisited;
+        set => isVisited = value;
     }
 
     private void OnTriggerEnter2D(Collider2D col)

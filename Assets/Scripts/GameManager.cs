@@ -48,6 +48,11 @@ public class GameManager : MonoBehaviour
     {
         player.transform.position = startLocation.transform.position;
         gameStates = GameState.MainMenu;
+        foreach (var varCheckpoint in checkpoints)
+        {
+            varCheckpoint.IsVisited = false;
+
+        }
         OnGameRestarted?.Invoke(this, EventArgs.Empty);
     }
     private void EndGame(object sender, EventArgs e)
@@ -58,14 +63,21 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
+        int checkPointsVisited = 0;
         if (player.transform.position.y < lowerBoundary.position.y)
         {
             foreach (var varCheckpoint in checkpoints)
             {
                 if (varCheckpoint.IsVisited)
                 {
+                    checkPointsVisited++;
                     player.transform.position = varCheckpoint.transform.position;
                 }
+            }
+
+            if (checkPointsVisited == 0)
+            {
+                player.transform.position = startLocation.transform.position;
             }
            
         }
